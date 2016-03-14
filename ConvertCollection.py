@@ -1,3 +1,5 @@
+import itertools
+
 import numpy as np
 from sklearn import preprocessing,metrics
 from sklearn.neighbors import KNeighborsClassifier
@@ -11,102 +13,102 @@ from numpy import mean
 
 from collections import Counter
 
-result = open('chroma.txt','w')
+result = open('ch.txt','w')
 chroma = []
 chords = []
 
-def chromaF(file):
-    with open(file, 'rb') as csvfile:
-        bothchroma = csv.reader(csvfile, delimiter=',')
-        mas = []
-        for row in bothchroma:
-          A = []
-          for i in range(1,len(row)):
-             A.append(float(row[i]))
-          mas.append(A)
-        csvfile.close()
-        return mas
+def takeMedian(chromas):
+    median = len(chromas) / 2
+    return chromas[median]
 
-def chordsMedian(timeInt,chordOne,mas):
-   lenTimeInt = len(timeInt)-1
-   apMed = timeInt[0] + abs(timeInt[lenTimeInt] - timeInt[0])/2
-   flag = True
-   i = 0
-   while flag:
-       if timeInt[i] < apMed:
-           i = i + 1
-       else:
-           i = i - 1
-           med = timeInt[i]
-           flag = False
-   res = []
-   for j in range(0,25):
-       res.append(mas[i][j])
-   chroma.append(res)
-   chords.append(chordOne)
+# define is chord ended: maj, min, 7, min7, maj7
+def findChords(str):
+    if str == 'N' or str == 'X':
+       return False
+    res  = str.split(':')
+    if len(res) < 2:
+        print str
+    return res[1] in {'maj', 'min', '7', 'maj7', 'min7'}
 
+# Read .lab file
+# Returns list of tuples (start, end, chord)
+def loadChord(chordFile):
+    chords = []
+    with open(chordFile, 'r') as csvfile:
+        csvreader = csv.reader(csvfile, delimiter='\t')
+        for row in csvreader:
+            if row != []:
+                start = float(row[0])
+                end = float(row[1])
+                chrd = row[2].replace(',', ';')
+                if findChords(chrd):
+                    chords.append((start, end, chrd))
+    return chords
 
-def chordsF(file,mas):
-    timeInt = []
-    chordInt = []
-    lenChroma = len(mas) - 1
-    i = 0
-    with open(file,'rb') as labfile:
-     f = csv.reader(labfile,delimiter = '\t')
-     for line in f:
-        if line != []:
-          l = line
-          time = float(l[1])
-          while (mas[i][0] <= time)and (i < lenChroma):
-            timeInt.append(mas[i][0])
-            chordInt.append(mas[i])
-            i = i + 1
-          chordOne = l[2]
-          if timeInt != []:
-             chordsMedian(timeInt,chordOne,chordInt)
-             timeInt = []
-             chordInt = []
-          else:
-              print 'Opachki'
-              break;
+# Read bothchroma.csv file
+# Returns list of 24-dim chroma vectors
+def loadChroma(chromaFile):
+    chroma = []
+    with open(chromaFile, 'r') as csvfile:
+        csvreader = csv.reader(csvfile, delimiter=',')
+        for row in csvreader:
+            if row != []:
+                chrm = map(float, row[1:])
+                chroma.append(chrm)
+    return chroma
+
+# Joins tuple (start, end, chord) with corresponded chroma
+# Returns list of tuples ( chord, time, chroma )
+# Param `func` defines function that takes list of chromas and should return single chroma vector
+def joinChordsChroma(chords, chroma, func):
+    currChroma = chroma
+    res = []
+    for (timeStart, timeEnd, chrd) in chords:
+        tmp = itertools.dropwhile(lambda v: v[0] < timeStart, currChroma)
+        corrChroma = list(itertools.takewhile(lambda v: v[0] <= timeEnd, tmp))
+
+        if len(corrChroma) > 0:
+            chosenChroma = func(corrChroma)
+            res.append( [chrd] + chosenChroma )
+            currChroma = currChroma[len(corrChroma):]
         else:
-          #  chords.append('N')
-            labfile.close()
-            break;
+            print "Empty chromas: start={}, end={}".format(timeStart, timeEnd)
+            currChroma =  currChroma[1:]
 
-urlChroma = "/home/nastya/PycharmProjects/ChordDetector/MainDir/chroma/"
-urlChords = "/home/nastya/PycharmProjects/ChordDetector/MainDir/chords/"
+    return res
 
-pt = os.listdir(urlChroma)
-st = os.listdir(urlChords)
+def convertData(urlChroma, urlChords, outFile):
+    pt = os.listdir(urlChroma)
+    st = os.listdir(urlChords)
 
-for i in range(0,len(pt)):
-#     chroma = []
-#     chords = []
-     bothchroma = urlChroma+pt[i]+'/bothchroma.csv'
-     full = urlChords+st[i]+'/full.lab'
-     mas = chromaF(bothchroma)
-     chordsF(full,mas)
-     lenChroma = len(chroma)
-#     result.write(pt[i]+'\n')
-#     for j in range(0,lenChroma):
-#        for t in range(0,25):
-#            result.write(str(chroma[j][t])+',')
-#        result.write(chords[j]+'\n')
-#     result.write('---'+'\n')
-     print pt[i]
-     if len(chroma) != len(chords):
-        print "chroma=chords"
-        print len(chroma)
-        print len(chords)
-        break
+    with open(outFile, 'w') as file:
+        for i in range(0, len(pt)):
+            bothchroma = os.path.join(urlChroma, pt[i], 'bothchroma.csv')
+            full = os.path.join(urlChords, st[i], 'full.lab')
 
-# res = {}
-# for x in chords:
-#     res[x] = 1
+            chroma = loadChroma(bothchroma)
+            chords = loadChord(full)
+            joined = joinChordsChroma(chords, chroma, takeMedian)
 
-print len(Counter(chords))
+            for row in joined:
+                strRow = ", ".join(map(str, row))
+                file.write(strRow + '\n')
 
-# print len(res)
+            if pt[i] != st[i]:
+                print "Error"
 
-result.close()
+            print pt[i]
+
+            # if len(chroma) != len(chords):
+            #    print "chroma != chords"
+            #    print len(chroma)
+            #    print len(chords)
+            #    break
+
+if __name__ == '__main__':
+
+    urlChroma = "./chroma/"
+    urlChords = "./chords/"
+    outFile = "chroma.txt"
+
+    convertData(urlChroma, urlChords, outFile)
