@@ -19,12 +19,13 @@ chords = []
 
 def takeMedian(chromas):
     median = len(chromas) / 2
-    return chromas[median]
+    return [chromas[median]]
 
 # define is chord ended: maj, min, 7, min7, maj7
 def findChords(str):
     if str == 'N' or str == 'X':
        return False
+    # return True
     res  = str.split(':')
     if len(res) < 2:
         print str
@@ -69,12 +70,12 @@ def joinChordsChroma(chords, chroma, func):
 
         if len(corrChroma) > 0:
             chosenChroma = func(corrChroma)
-            res.append( [chrd] + chosenChroma )
+            for chrm in chosenChroma:
+                res.append( [chrd] + chrm )
             currChroma = currChroma[len(corrChroma):]
         else:
             print "Empty chromas: start={}, end={}".format(timeStart, timeEnd)
             currChroma =  currChroma[1:]
-
     return res
 
 def convertData(urlChroma, urlChords, outFile):
@@ -82,16 +83,16 @@ def convertData(urlChroma, urlChords, outFile):
     st = os.listdir(urlChords)
 
     with open(outFile, 'w') as file:
-        for i in range(0, len(pt)):
+        for i in range(0, len(pt) / 4):
             bothchroma = os.path.join(urlChroma, pt[i], 'bothchroma.csv')
             full = os.path.join(urlChords, st[i], 'full.lab')
 
             chroma = loadChroma(bothchroma)
             chords = loadChord(full)
             joined = joinChordsChroma(chords, chroma, takeMedian)
-
+#lambda x: x
             for row in joined:
-                strRow = ", ".join(map(str, row))
+                strRow = ", ".join([pt[i]] + map(str, row))
                 file.write(strRow + '\n')
 
             if pt[i] != st[i]:
